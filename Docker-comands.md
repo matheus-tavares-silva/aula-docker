@@ -79,11 +79,13 @@ docker container stop id
 docker container rm id
 
 
- docker run --name "servidor_wev" -d -p 8080:80 -e NGINX_ENTRYPOINT_QUITE_LOGS=1 -v "/home/local:/usr/share/nginx/html" nginx:1.19.4-alpine
+docker run --name "servidor_wev" -d -p 8080:80 -e NGINX_ENTRYPOINT_QUITE_LOGS=1 -v "/home/local:/usr/share/nginx/html" nginx:1.19.4-alpine
 
  # inspecionando informações
 
  docker inspect id
+
+
 
   // monts
 
@@ -322,3 +324,217 @@ docker exec -it container_3_bridge_nova_faixa ifconfig
 
 # Para desconectar
 docker network disconnect bridge container_3_bridge_nova_faixa
+
+
+## Acessando banco de dados
+
+subir a pasta fusion
+
+
+
+POSTGRES.DOCKERFILE
+
+
+fusion.dockerfile
+
+FROM python:3.9.0-alpine
+LABEL maintainer "Geek University <contato@geekuniversity.com.br>"
+COPY . /var/www
+WORKDIR /var/www
+RUN apk update && apk add zlib-dev jpeg-dev gcc musl-dev python3-dev postgresql-dev && pip install -r requirements.txt && python manage.py migrate
+ENTRYPOINT python manage.py runserver 0.0.0.0:8000
+EXPOSE 8000
+
+
+
+
+FROM postgres:13.1-alpine
+LABEL mainteiner "Wes"
+ENV POSTGRES_USER=fusion_user
+ENV POSTGRES_PASSWORD=fusion_pass
+ENV POSTGRES_DB=fusion_app
+EXPOSE 5432
+
+
+# Buildar a imagem do pgfusion
+docker build -f pgfusion.dockerfile -t guniversity/pgfusion:v1 .
+
+# Subir container
+docker run --name "pgfusion" -d guniversity/pgfusion:v1
+
+
+# Buildar a imagem do fusion
+docker build -f fusion.dockerfile -t guniversity/fusion:v1 .
+
+# Subir container
+docker run --name fusion -d -p 8080:8000 guniversity/fusion:v1
+
+
+# Criar usuario no banco
+
+docker exec -it fusion sh
+
+puthon manage.py createsuperuser
+
+
+
+## Seção 9 - Docker Compose
+
+baixar exemplo fusion-incio
+
+criar docker-compose.yml
+
+```yaml
+version: "3.8"
+
+services:
+  nginx:
+    build: 
+      dockerfile: ./docker/nginx.dockerfile
+      context: .
+    image: wesbarboza/nginx_fusion:v1
+    container_name: nginx
+    ports:
+      - "8080:80"
+    networks:
+      - nwfusion
+    depends_on:
+      - fusion1
+      - fusion2
+      - fusion3
+  pgfusion:
+    build:
+      dockerfile: ./docker/pgfusion.dockerfile
+      context: .
+    image: wesbarboza/pgfusion:v1
+    container_name: pgfusion
+    ports:
+      - "5432"
+    networks:
+      - nwfusion
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  fusion1:
+    build:
+      dockerfile: ./docker/fusion.dockerfile    
+      context: .
+    image: wesbarboza/fusion:v1
+    container_name: fusion1
+    ports:
+      - "8000"
+    networks:
+      - nwfusion
+    depends_on:
+      - pgfusion
+  
+  fusion2:
+    build:
+      dockerfile: ./docker/fusion.dockerfile    
+      context: .
+    image: wesbarboza/fusion:v1
+    container_name: fusion2
+    ports:
+      - "8000"
+    networks:
+      - nwfusion
+    depends_on:
+      - pgfusion
+  
+  fusion3:
+    build:
+      dockerfile: ./docker/fusion.dockerfile    
+      context: .
+    image: wesbarboza/fusion:v1
+    container_name: fusion3
+    ports:
+      - "8000"
+    networks:
+      - nwfusion
+    depends_on:
+      - pgfusion            
+
+
+networks:
+  nwfusion:
+    driver: bridge
+
+volumes:
+  pgdata:
+```
+
+no mesmo diretorio do arquivo do docker compose
+
+# buildar as imagens
+docker-compose build
+
+# visualizar as imagens
+
+cloud_user@12922475571c:~/fusion$ docker image ls
+REPOSITORY                TAG             IMAGE ID       CREATED              SIZE
+wesbarboza/nginx_fusion   v1              729163b6260b   10 seconds ago       42.3MB
+wesbarboza/fusion         v1              0f6e6dcf5d2c   17 seconds ago       616MB
+wesbarboza/pgfusion       v1              66ab9ccda952   About a minute ago   159MB
+guniversity/fusion        v1              eeb7fbf61e59   About an hour ago    595MB
+guniversity/pgfusion      v1              9bcab115314b   About an hour ago    159MB
+<none>                    <none>          2c61fac548d7   2 hours ago          54.8MB
+<none>                    <none>          37a4551a028c   2 hours ago          159MB
+postgres                  latest          317a302c7480   25 hours ago         374MB
+postgres                  13.1-alpine     8c6053d81a45   9 months ago         159MB
+python                    3.9.0-alpine    c0c46556c6d3   10 months ago        46.2MB
+nginx                     1.19.4-alpine   e5dcd7aa4b5e   11 months ago        21.8MB
+alpine                    3.12.1          d6e46aa2470d   12 months ago        5.57MB
+
+
+docker-compose up -d 
+
+
+cloud_user@12922475571c:~/fusion$ docker-compose up -d
+Creating network "fusion_nwfusion" with driver "bridge"
+Creating volume "fusion_pgdata" with default driver
+Creating pgfusion ... done
+Creating fusion1  ... done
+Creating fusion2  ... done
+Creating fusion3  ... done
+Creating nginx    ... done
+
+
+docker ps
+CONTAINER ID   IMAGE                        COMMAND                  CREATED          STATUS          PORTS                                            NAMES
+7de5d3f4fcbd   wesbarboza/nginx_fusion:v1   "nginx -g 'daemon of…"   16 seconds ago   Up 14 seconds   443/tcp, 0.0.0.0:8080->80/tcp, :::8080->80/tcp   nginx
+93682e64b04f   wesbarboza/fusion:v1         "/bin/sh -c 'gunicor…"   19 seconds ago   Up 16 seconds   0.0.0.0:49155->8000/tcp, :::49155->8000/tcp      fusion1
+cba57105cad7   wesbarboza/fusion:v1         "/bin/sh -c 'gunicor…"   19 seconds ago   Up 16 seconds   0.0.0.0:49156->8000/tcp, :::49156->8000/tcp      fusion3
+1ffef76ea773   wesbarboza/fusion:v1         "/bin/sh -c 'gunicor…"   19 seconds ago   Up 16 seconds   0.0.0.0:49154->8000/tcp, :::49154->8000/tcp      fusion2
+a9c251dd2c94   wesbarboza/pgfusion:v1       "docker-entrypoint.s…"   20 seconds ago   Up 19 seconds   0.0.0.0:49153->5432/tcp, :::49153->5432/tcp      pgfusion
+
+
+ao entrar na pagina ocorreu erro
+
+executar comando:
+
+docker exec -it fusion1 python manage.py migrate
+
+docker-compose down //para todos os containers
+
+## Docker e Microserviços
+
+Escalabilidade 
+
+Vertical (recursos e capacidade da maquina que estamos utilizando)
+horizontal: quanto replicamos a mesma maquina ou serviço
+
+Aplicação Monolítica
+
+toda base de codico contida em um só lugar, bloco dividido em 3 partes (apresentação, business, data access)
+
+
+## Docker Cloud
+
+alterar docker-compose.yml
+
+ports nginx >>>> 80:80
+
+
+docker-compose build
+
+docker-compose -d 
