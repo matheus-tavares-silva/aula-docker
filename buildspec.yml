@@ -1,0 +1,14 @@
+version: 0.2
+
+phases:
+  tf_init:
+    commands:
+      - terraform init
+
+  tf_validate:
+    commands:
+      - terraform validate
+
+  tf_plan:
+    commands:
+      - terraform plan
