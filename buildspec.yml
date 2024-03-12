@@ -1,14 +1,20 @@
 version: 0.2
 
 phases:
-  tf_init:
+  pre_build:
     commands:
-      - terraform init
+      - echo "Setting up AWS credentials"
+      - aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+      - aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+      - aws configure set default.region $AWS_REGION
 
-  tf_validate:
+  build:
     commands:
+      - echo "Running Terraform init"
+      - terraform init
       - terraform validate
 
-  tf_plan:
+  post_build:
     commands:
+      - echo "Running Terraform plan"
       - terraform plan
